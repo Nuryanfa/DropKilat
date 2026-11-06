@@ -44,8 +44,19 @@ while read -r line; do
       [[ $behind != "?" && $behind -gt 20 ]] && echo "  ! more than 20 commits behind main: ask for a rebase"
 
       if [[ $agent != claude ]]; then
-        changed=$( { git -C "$path" diff --name-only origin/main...HEAD; git -C "$path" status --porcelain | cut -c4-; } 2>/dev/null | sort -u)
+        # Gemini branches from Codex's feat branch, so diff against that instead of main.
+        feat=$(git -C "$root" for-each-ref --format='%(refname:short)' "refs/remotes/origin/feat/$task-*" | head -1)
+        test=$(git -C "$root" for-each-ref --format='%(refname:short)' "refs/remotes/origin/test/$task-*" | head -1)
+        base=origin/main
+        [[ $agent == gemini && -n $task && -n $feat ]] && base=$feat
+        changed=$( { git -C "$path" diff --name-only "$base"...HEAD; git -C "$path" status --porcelain | cut -c4-; } 2>/dev/null | sort -u)
         outside=$(grep -vE "$(allowed_for "$agent")" <<<"$changed" | grep -v '^$')
+        # Codex merging Gemini's test PR carries Gemini's files over unchanged; that is not a violation.
+        if [[ $agent == codex && -n $test && -n $outside ]]; then
+          outside=$(while read -r f; do
+            git -C "$path" diff --quiet "$test" HEAD -- "$f" 2>/dev/null || echo "$f"
+          done <<<"$outside")
+        fi
         [[ -n $outside ]] && { echo "  ! outside $agent's area:"; sed 's/^/      /' <<<"$outside"; }
       fi
       path=""; branch=""
