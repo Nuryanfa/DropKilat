@@ -32,7 +32,7 @@ db="dropkilat_$agent"
 
 git -C "$root" fetch -q origin
 git -C "$root" rev-parse -q --verify "$base" >/dev/null || { echo "base $base not found on origin" >&2; exit 1; }
-git -C "$root" worktree add -b "$branch" "$wt" "$base"
+git -C "$root" worktree add --no-track -b "$branch" "$wt" "$base"
 
 # .env is gitignored, so every worktree needs its own copy.
 src="$root/.env"; [[ -f $src ]] || src="$root/.env.example"

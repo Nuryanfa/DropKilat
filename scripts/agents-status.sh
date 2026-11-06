@@ -25,6 +25,7 @@ while read -r line; do
     branch\ *)   branch=${line#branch refs/heads/} ;;
     detached)    branch="(detached)" ;;
     "")
+      [[ -z ${path:-} ]] && continue
       name=$(basename "$path")
       if [[ $path == "$root" ]]; then agent=claude; else agent=${name%%-*}; fi
       task=$(grep -oE '(T|BUG)-[0-9]+' <<<"$name$branch" | head -1)
