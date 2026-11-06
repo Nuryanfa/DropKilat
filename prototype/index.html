@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#FAF6EF">
+  <link rel="icon" href="data:,">
+  <title>Studio Sore · DropKilat — Mode demo</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#drop">Langsung ke drop</a>
+  <div id="active-hold" class="active-hold" hidden aria-hidden="true">Stok dikunci untukmu <strong id="sticky-timer">15:00</strong></div>
+  <header class="site-header"><a href="index.html" class="brand" aria-label="DropKilat, ulangi demo">drop<span>kilat</span> ↗</a><span class="pill">MODE DEMO</span></header>
+  <main>
+    <div class="intro"><p class="eyebrow">SEDIKIT STOK. BANYAK CERITA.</p><h1>Ketemu favoritmu.<br>Amankan sebelum habis.</h1><p>Satu drop, satu kesempatan. Antreannya kami yang urus.</p></div>
+    <article id="drop" class="drop-card" aria-label="Drop Tas Sore">
+      <div class="trust"><div class="seller"><span class="avatar" aria-hidden="true">ss.</span><div><h2>Studio Sore</h2><p>@studiosore · Toko contoh</p></div></div>
+        <div class="badges"><span>✓ Nomor terverifikasi</span><span>✓ Identitas terverifikasi</span></div>
+        <p class="track">12 drop · 340 pesanan · 97% diterima</p></div>
+      <section class="product" aria-labelledby="product-title">
+        <div class="art" role="img" aria-label="Ilustrasi tas tote warna lavender dengan kantong dan tali panjang">
+          <span class="edition">EDISI 001 / 10 TAS</span>
+          <svg viewBox="0 0 400 330" aria-hidden="true"><ellipse cx="204" cy="294" rx="111" ry="15" fill="#1B1530" opacity=".1"/><path d="M151 119V85C151 17 248 17 248 85V119" fill="none" stroke="#1B1530" stroke-width="17"/><path d="M109 107H291L311 278Q202 307 89 278Z" fill="#B9A2D6" stroke="#1B1530" stroke-width="3"/><path d="M145 109V181M254 109V181" stroke="#1B1530" stroke-width="12"/><path d="M160 191H242V259H160Z" fill="#EFE9F7" stroke="#1B1530" stroke-width="2"/><text x="201" y="224" text-anchor="middle" fill="#1B1530" font-size="14" font-family="sans-serif">sore.</text></svg>
+          <span class="art-caption">Dibuat pelan. Diambil kilat.</span>
+        </div>
+        <div class="product-info"><p class="eyebrow">STUDIO SORE / DROP TERBATAS</p><h2 id="product-title">Tas Sore, ke mana saja.</h2><p>Tote kanvas untuk hari yang panjang. Dibuat lokal, cuma 10 tas dalam drop ini.</p><div class="price">Rp150.000 <span>/ tas</span></div><fieldset id="variants"><legend>Pilih warna</legend><button type="button" class="chip" aria-pressed="true">Lavender · Rp150.000</button></fieldset><p class="fine">Maksimal 1 tas per pembeli · Hold 15 menit</p></div>
+      </section>
+      <section class="checkout" aria-label="Ambil dan bayar">
+        <div class="stock"><span id="stock-label">Sisa 10 dari 10</span><span id="drop-status" class="pill">Terjadwal</span></div>
+        <meter id="stock-meter" min="0" max="10" value="10" aria-labelledby="stock-label">10 dari 10</meter>
+        <div id="before"><p class="eyebrow">SIAP-SIAP, YA.</p><h3>Drop dibuka dalam <span id="countdown">00:12:30</span></h3><button id="verify" class="primary">Verifikasi WhatsApp dulu</button><p class="fine">Simulasi verifikasi, tanpa nomor atau pesan sungguhan.</p></div>
+        <div id="live" hidden><h3>Drop sudah dibuka!</h3><p>Ambil sekarang, lalu bayar dalam 15 menit.</p><button id="claim" class="primary">Ambil</button></div>
+        <div id="hold" hidden><p class="eyebrow">Stok dikunci untukmu</p><div id="hold-timer" class="timer" role="timer" aria-label="Sisa waktu bayar">15:00</div><p id="urgency" hidden>Segera selesaikan pembayaran</p><div class="payment"><div class="qris" role="img" aria-label="Contoh QRIS, tidak bisa dipindai"><span>QRIS</span><strong>Contoh</strong><small>Tidak bisa dipindai</small></div><div><h3>Rp150.000</h3><p>QRIS seller · Contoh</p><strong>Jangan lakukan pembayaran.</strong></div></div><button id="proof" class="primary">Kirim bukti</button><p class="fine">Tombol ini hanya menyimulasikan pengiriman bukti.</p><p>Link bayar juga dikirim ke WhatsApp kamu.</p></div>
+        <div id="waiting" hidden><span class="queue-number" id="queue-number">#3</span><h3 id="queue-copy">Stok sedang habis. Kamu di antrean nomor 3.</h3><p>Kalau ada yang tidak bayar, kami kirim WhatsApp dan kamu dapat 15 menit untuk bayar.</p><button id="leave" class="secondary">Keluar dari antrean</button></div>
+        <div id="expired" hidden><h3>Waktu bayar habis, stok kembali ke antrean.</h3><button id="rejoin" class="primary">Masuk antrean</button></div>
+        <div id="confirmation" hidden><h3>Bukti terkirim. Menunggu konfirmasi seller (biasanya &lt; 1 jam).</h3><p>Ini simulasi. Stok tetap dikunci selama menunggu konfirmasi.</p></div>
+        <aside id="whatsapp" class="whatsapp" hidden aria-label="Contoh pesan WhatsApp"><p class="eyebrow">WHATSAPP · PESAN CONTOH</p><strong>Giliranmu! Bayar dalam 15 menit</strong><p id="wa-recipient"></p></aside>
+        <p id="feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+        <p id="timer-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></p>
+        <p class="safety">Bayar hanya lewat halaman ini. Jangan transfer ke rekening pribadi di luar instruksi halaman ini.</p>
+      </section>
+    </article>
+    <section class="demo" aria-labelledby="demo-title"><div><h2 id="demo-title">Mode demo</h2><p>Semua data contoh. Tidak ada pembayaran atau WhatsApp sungguhan. Muat ulang untuk mulai lagi.</p></div><div class="demo-controls"><button id="open">Buka drop sekarang</button><button id="rush">Simulasikan 30 pembeli rebutan</button><button id="expire">Simulasikan pembeli pertama tidak bayar</button><button id="speed" aria-pressed="false">Percepat timer</button></div><p id="demo-event" role="status" aria-live="polite">Coba Ambil, atau biarkan stok habis untuk melihat antrean.</p></section>
+    <footer>dropkilat ↗ <span>Stok terbatas. Kesempatan tetap adil.</span></footer>
+  </main>
+  <noscript>Aktifkan JavaScript untuk mencoba timer dan simulasi drop ini.</noscript>
+</body>
+</html>
