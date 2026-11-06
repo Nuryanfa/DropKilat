@@ -33,6 +33,7 @@
     $("queue-copy").textContent = `Stok sedang habis. Kamu di antrean nomor ${position}.`;
     const hold = viewerHold();
     $("active-hold").hidden = state.phase !== "hold";
+    if (!["waiting", "hold"].includes(state.phase)) $("whatsapp").hidden = true;
     if (hold) $("sticky-timer").textContent = time(hold.remaining);
     if (hold && !hold.proof) {
       $("hold-timer").textContent = time(hold.remaining);

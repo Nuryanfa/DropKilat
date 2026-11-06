@@ -21,12 +21,22 @@ def run():
         page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
         requests = []
         page.on("request", lambda request: requests.append(request.url))
-        page.goto((ROOT / "prototype/index.html").as_uri())
         page.clock.install()
+        page.goto((ROOT / "prototype/index.html").as_uri())
         expect(page.locator("#countdown")).to_have_text("00:12:30")
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
         assert len(requests) == 3 and all(url.startswith("file:") for url in requests)
-        page.locator("#verify").click()
+        brand = page.locator(".brand").bounding_box()
+        assert brand["width"] >= 44 and brand["height"] >= 44
+        header_top = page.locator(".site-header").bounding_box()["y"]
+        page.keyboard.press("Tab")
+        expect(page.locator(".skip")).to_be_focused()
+        assert page.locator(".site-header").bounding_box()["y"] == header_top
+        # Real pointer down/up catches layout shifts that can swallow a click.
+        page.locator("#verify").scroll_into_view_if_needed()
+        verify = page.locator("#verify").bounding_box()
+        page.mouse.click(verify["x"] + verify["width"] / 2, verify["y"] + verify["height"] / 2)
+        expect(page.locator("#verify")).to_be_disabled()
         page.locator("#open").click()
         page.locator("#claim").click()
         expect(page.locator("#claim")).to_be_disabled()
@@ -64,18 +74,35 @@ def run():
         expect(page.locator("#hold")).to_be_visible()
         expect(page.locator("#hold-timer")).to_have_text("15:00")
         expect(page.locator("#wa-recipient")).to_contain_text("untuk kamu")
+        page.locator("#proof").click()
+        expect(page.locator("#confirmation")).to_be_visible()
+        expect(page.locator("#whatsapp")).to_be_hidden()
 
         page.reload()
         page.locator("#rush").click()
         page.clock.run_for(2_200)
+        for _ in range(3):
+            page.locator("#expire").click()
+        expect(page.locator("#whatsapp")).to_be_visible()
+        page.locator("#speed").click()
+        page.clock.run_for(31_000)
+        expect(page.locator("#expired")).to_be_visible()
+        expect(page.locator("#whatsapp")).to_be_hidden()
+
+        page.reload()
+        page.locator("#rush").click()
+        page.clock.run_for(2_200)
+        page.locator("#expire").click()
+        expect(page.locator("#whatsapp")).to_be_visible()
         page.locator("#leave").click()
+        expect(page.locator("#whatsapp")).to_be_hidden()
         expect(page.locator("#live")).to_be_visible()
         page.locator("#claim").click()  # Simulated verification after opening.
         expect(page.locator("#claim")).to_have_text("Ambil")
         page.locator("#claim").click()
         page.clock.run_for(400)
         expect(page.locator("#waiting")).to_be_visible()
-        expect(page.locator("#queue-number")).to_have_text("#20")
+        expect(page.locator("#queue-number")).to_have_text("#19")
 
         handler = partial(SimpleHTTPRequestHandler, directory=str(ROOT / "prototype"))
         server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
