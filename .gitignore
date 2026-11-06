@@ -1,0 +1,19 @@
+# env and secrets
+.env
+*.pem
+*.key
+# build output
+/bin/
+/dist/
+*.test
+coverage.*
+# generated
+web/static/css/app.css
+*_templ.go
+# tests
+tests/e2e/node_modules/
+tests/e2e/test-results/
+tests/load/results/
+# local data
+/data/
+.DS_Store

@@ -1,0 +1,30 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: dropkilat, POSTGRES_PASSWORD: dropkilat, POSTGRES_DB: dropkilat }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DK_MIGRATE_DATABASE_URL: postgres://dropkilat:dropkilat@localhost:5432/dropkilat?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.27", cache: true }
+      - name: Install migrate
+        run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+      - name: Migrations are reversible
+        run: ./scripts/migrate-check.sh
+      - name: Test
+        if: hashFiles('go.mod') != ''
+        run: go test -race ./...
+      - name: Vulnerabilities
+        if: hashFiles('go.mod') != ''
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

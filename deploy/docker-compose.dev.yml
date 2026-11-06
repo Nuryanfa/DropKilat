@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: dropkilat
+      POSTGRES_PASSWORD: dropkilat
+      POSTGRES_DB: dropkilat
+    ports: ["5432:5432"]
+    volumes:
+      - dkdb:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+volumes:
+  dkdb:
