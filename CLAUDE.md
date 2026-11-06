@@ -14,6 +14,7 @@ A checkout link for UMKM sellers who run limited drops/POs on WhatsApp, IG and T
 4. **Merge** only when the Definition of Done in `docs/implementation-plan.md` is met.
 5. **Unblock.** Answer questions in the task card's "Questions" section within the same session. If the answer changes scope or money, ask Nur.
 6. **Gate keeping.** Run the phase gates (B and C) and record the result in the plan.
+7. **Monitor the agents.** Run `scripts/agents-status.sh` at the start of every session and before every review, and act on its flags as described in `docs/agents/worktrees.md`. You work in the main checkout; Codex and Gemini work in `../wt/<agent>-T-xxx`. Remove a worktree after its PR merges.
 
 You may write code for spikes, reference implementations of tricky parts (e.g. the claim transaction) and fixes during review, but feature work belongs to Codex.
 

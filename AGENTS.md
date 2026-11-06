@@ -10,7 +10,7 @@ Implement one task card at a time from `docs/tasks/T-xxx.md`, end to end: Go bac
 
 1. Read the task card fully, then the doc sections it links (`docs/backend.md`, `docs/database-schema.md`, `docs/app-flow.md`, `docs/design.md`).
 2. If anything is ambiguous or conflicts with the docs, write it under **Questions** in the card and stop that part. Do not guess on money, stock, auth or schema.
-3. Create a branch `feat/T-xxx-short-name` (or `fix/…`).
+3. Work only in your worktree `../wt/codex-T-xxx` (created by `scripts/wt-new.sh codex T-xxx <slug>`), on branch `feat/T-xxx-<slug>` (or `fix/…`). Follow `docs/agents/worktrees.md`: stay in your file area, never touch another worktree, commit at least once per session, set the card to `in-progress` when you start.
 
 ## Stack and conventions
 

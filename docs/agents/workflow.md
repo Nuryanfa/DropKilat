@@ -43,7 +43,7 @@ The state lives in the card's front matter and is updated by whoever moves it.
 - `main` is always deployable. No direct pushes; PRs only.
 - Branch names: `feat/T-xxx-…`, `fix/BUG-xxx-…`, `test/T-xxx-…` (Gemini), `docs/…` (Claude).
 - Conventional commits: `feat(order): claim with waitlist fallback (T-203)`.
-- Gemini's tests for a feature go in the same PR when possible (push to Codex's branch) or a follow-up `test/` PR linked in the QA report.
+- Gemini's tests for a feature go on `test/T-xxx-…`, branched from Codex's branch, with a PR targeting it (or a follow-up PR to `main`), linked in the QA report. Nobody pushes to another agent's branch.
 
 ## Conflict rules
 
@@ -54,12 +54,15 @@ The state lives in the card's front matter and is updated by whoever moves it.
 
 ## Running the three agents
 
-Each agent gets its own working copy (git worktree) to avoid stepping on each other:
+Each agent gets its own worktree, branch, port and database. The rules, file ownership and how Claude monitors them are in [worktrees.md](worktrees.md).
 
 ```bash
-git worktree add ../dk-codex  -b feat/T-xxx
-git worktree add ../dk-gemini  feat/T-xxx      # QA checks out the same branch after the PR opens
+scripts/wt-new.sh codex  T-001 prototype   # ../wt/codex-T-001,  feat/T-001-prototype
+scripts/wt-new.sh gemini T-001 prototype   # ../wt/gemini-T-001, test/T-001-prototype (after Codex pushes)
+scripts/agents-status.sh                   # Claude: dashboard of all worktrees and cards
 ```
+
+Start each agent's CLI **inside its own worktree folder**, never in the main checkout.
 
 Suggested prompts to start a session:
 
