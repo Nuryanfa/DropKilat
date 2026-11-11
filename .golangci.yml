@@ -1,0 +1,19 @@
+version: "2"
+linters:
+  default: none
+  enable: [govet, staticcheck, errcheck, gosec, forbidigo]
+  settings:
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^time\.Now$'
+          msg: Use clock.Clock.
+        - pattern: '^(float32|float64)$'
+          msg: Money uses int64 rupiah.
+  exclusions:
+    rules:
+      - path: '^internal/platform/clock/'
+        linters: [forbidigo]
+      - path-except: '^internal/(order|payment|billing)/'
+        linters: [forbidigo]
+        text: 'Money uses int64 rupiah'
