@@ -106,7 +106,7 @@ North-star metric: **repeat drops per seller per month**.
 | New seller limits | First 3 drops: max 30 total stock and Rp5.000.000 total value per drop, until ≥ 90% of paid orders are confirmed received |
 | Platform fee (Otomatis) | 2% of net amount after PG fee, min Rp1.000, max Rp7.500 per order |
 | Otomatis eligibility | Seller has ≥ 15 orders per month; every variant price ≥ Rp20.000 |
-| Platform fee (Manual) | Free during the pilot. After Gate D: 50 confirmed orders per seller per calendar month free, then Rp1.000 per confirmed order, billed on a monthly invoice. Orders are never blocked. |
+| Platform fee (Manual) | Free during the pilot. After Gate D: 50 confirmed orders per seller per calendar month free, then Rp1.000 per confirmed order, billed on a monthly invoice. Orders are never blocked. A refund caused by the seller or a system error is credited on the next invoice; a buyer cancel is not. An invoice more than 14 days overdue stops the seller from starting new drops (ADR 0006 amendment). |
 | Auto-complete | Order becomes "Diterima" 7 days after "Dikirim" if the buyer does not report |
 
 ## 7. Pricing (decided 2026-11-11 by PO, ADR 0006; amounts to validate in the pilot)
@@ -134,5 +134,5 @@ North-star metric: **repeat drops per seller per month**.
 2. Meta Cloud API: confirm that utility templates inside an open customer service window are free for our category and region.
 3. How many orders per month does a typical small seller really have? (from interviews)
 4. Is 15 minutes right for buyers who pay by bank transfer in Manual mode?
-5. Billing details: how "≥ 15 orders/month" is measured, whether refunded orders count, what happens to unpaid invoices (defaults in ADR 0006, confirm in T-806 and T-901).
+5. Billing details: how "≥ 15 orders/month" is measured (default in ADR 0006, confirm in T-806). Refunds and unpaid invoices decided 2026-11-12; still open: credit after a dispute refund, invoice due date (ADR 0006 amendment).
 6. Tax and legal check before the first invoice (invoice format, PPN).
