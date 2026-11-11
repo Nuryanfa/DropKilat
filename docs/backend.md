@@ -84,9 +84,9 @@ JSON APIs return `application/json`; errors use RFC 9457 `application/problem+js
 | GET | `/seller/drops/{id}/live` | Live monitor (HTML + SSE `/seller/drops/{id}/stream`) |
 | GET | `/seller/orders?status=&drop=` | Orders list |
 | POST | `/seller/orders/{id}/confirm` · `/reject` | Manual payment decision. Reject body `{reason, block_buyer: bool}` ("Tolak dan blokir pembeli di toko ini") |
-| POST | `/seller/orders/{id}/cancel` | Cancel a paid order → `refund_pending`; body `{reason, return_stock: bool}` |
+| POST | `/seller/orders/{id}/cancel` | Cancel a paid order → `refund_pending`; body `{reason, cause: "seller"|"buyer_request", return_stock: bool}`. `cause` decides the fee credit (ADR 0006 amendment, T-901) |
 | GET · DELETE | `/seller/blocks` · `/seller/blocks/{buyerID}` | List and lift shop blocks |
-| GET | `/seller/billing` | Usage meter this month, invoices (T-407, T-901) |
+| GET | `/seller/billing` · `/seller/billing/invoices/{id}` | Usage meter this month, invoices, printable invoice (T-407, T-901) |
 | POST | `/seller/orders/{id}/ship` · `/seller/orders/ship-bulk` | Tracking numbers |
 | GET | `/seller/drops/{id}/export.csv` · `/labels` | Export, print labels |
 
@@ -120,6 +120,7 @@ Webhook handlers only persist the event and enqueue processing in the same reque
 | `buyer-blocked` | 403 | Seller blocked this buyer in this shop (T-406) |
 | `step-up-required` | 401 | Unmasked personal data needs a fresh verification (ADR 0003) |
 | `otomatis-not-eligible` | 403 | Seller below 15 orders/month cannot enable Otomatis (ADR 0006, T-806) |
+| `invoice-overdue` | 403 | Drop create/publish while an invoice is > 14 days overdue and `DK_BILLING_ENFORCE_OVERDUE=true` (ADR 0006 amendment, T-901) |
 
 ## 5. Background workers
 
@@ -131,7 +132,7 @@ Webhook handlers only persist the event and enqueue processing in the same reque
 | `webhooks` | 1 s | Process unprocessed `webhook_events` | 2, `SKIP LOCKED` |
 | `outbox` | 1 s | Deliver due messages; backoff 5 s, 30 s, 2 min, 10 min, 1 h; dead after 6 attempts | 4, `SKIP LOCKED` |
 | `retention` | daily 03:00 WIB | Privacy deletes (`docs/database-schema.md` §8) | 1 |
-| `invoicer` | monthly, 1st 04:00 WIB | Close last month's usage, create invoices (T-901, after Gate D) | 1 |
+| `invoicer` | monthly, 1st 04:00 WIB; reminders daily 09:00 WIB | Close last month's usage, create refund credits, issue invoices, send reminders at `due_at` and `due_at + 7 d` (T-901, after Gate D) | 1 |
 
 All workers stop gracefully on SIGTERM (finish the current transaction, then exit).
 
@@ -180,6 +181,9 @@ Implementation (ADR 0007): in-process hub. Services call `hub.Touch(dropID)` / `
 | `DK_FEATURE_WA_SEND` | `false` | false → fake sender logs messages |
 | `DK_WA_PHONE_NUMBER_ID`, `DK_WA_ACCESS_TOKEN`, `DK_WA_APP_SECRET`, `DK_WA_VERIFY_TOKEN`, `DK_WA_BUSINESS_NUMBER` | | |
 | `DK_OWNER_PHONES` | `+62812...` | Owner admin access |
+| `DK_FEATURE_BILLING` | `false` | Monthly invoices (T-901, after Gate D) |
+| `DK_BILLING_ENFORCE_OVERDUE` | `false` | Block new drops when an invoice is > 14 days overdue |
+| `DK_INVOICE_ISSUER_NAME`, `DK_INVOICE_BANK_NAME`, `DK_INVOICE_BANK_ACCOUNT`, `DK_INVOICE_BANK_HOLDER` | | Required if billing on. Secret store only, never in the repo; never logged (ADR 0006 amendment) |
 
 Startup fails fast if a required variable is missing or a key has the wrong length.
 
