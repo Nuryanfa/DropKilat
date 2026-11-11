@@ -10,6 +10,8 @@ import (
 
 func TestInvalidConfigProcess(t *testing.T) {
 	if os.Getenv("DK_TEST_INVALID_CHILD") == "1" {
+		// The child exercises server startup without the testing package CLI flags.
+		os.Args = os.Args[:1]
 		main()
 		return
 	}
