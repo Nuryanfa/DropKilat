@@ -4,6 +4,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Nuryanfa/DropKilat/internal/platform/clock"
+)
+
+var (
+	_ clock.Clock = (*Fake)(nil)
+	_ clock.Clock = clock.Real{}
 )
 
 func TestFakeConcurrent(t *testing.T) {
