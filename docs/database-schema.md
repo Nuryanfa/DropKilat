@@ -227,4 +227,4 @@ Decided but not yet merged. Each lands in its task's PR; this section is removed
 | `00000N_proof_review` | T-406 | `orders.review_due_at`, `orders.review_late_at`; table `shop_buyer_blocks (seller_id, buyer_id, reason, created_by, created_at, PRIMARY KEY (seller_id, buyer_id))` with the tenant RLS policy |
 | `00000N_usage_meter` | T-407 | `seller_monthly_usage (seller_id, month, confirmed_manual_orders, PRIMARY KEY (seller_id, month))`; `sellers.billing_exempt_until` |
 | `00000N_buyer_step_up` | T-503 | `buyer_sessions.stepped_up_at` (ADR 0003 amendment) |
-| `00000N_invoices` | T-901 | `invoices`, `invoice_lines` (spec in the card) |
+| `00000N_invoices` | T-901 | `invoices`, `invoice_lines`, `billing_credits`, `orders.refund_cause` (spec in the card; ADR 0006 amendment) |
