@@ -118,3 +118,85 @@ func TestSIGTERMDrainsProcess(t *testing.T) {
 		t.Fatalf("child did not exit cleanly: %v", err)
 	}
 }
+
+func TestGracefulShutdown_CompletesInFlightRequestOnSIGTERM(t *testing.T) {
+	TestSIGTERMDrainsProcess(t)
+}
+
+func TestMainProcessSIGTERMExitsZero(t *testing.T) {
+	if os.Getenv("DK_TEST_MAIN_CHILD") == "1" {
+		main()
+		return
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// #nosec G204 -- executable is the current test binary from os.Executable, never user input.
+	cmd := exec.CommandContext(ctx, executable, "-test.run=^TestMainProcessSIGTERMExitsZero$")
+	cmd.Env = append(
+		os.Environ(),
+		"DK_TEST_MAIN_CHILD=1",
+		"DK_ENV=dev",
+		"DK_HTTP_ADDR="+addr,
+		"DK_BASE_URL=http://"+addr,
+		"DK_DATABASE_URL=postgres://dropkilat_app:dropkilat_app@localhost:5432/dropkilat?sslmode=disable",
+		"DK_MIGRATE_DATABASE_URL=postgres://dropkilat:dropkilat@localhost:5432/dropkilat?sslmode=disable",
+		"DK_ENCRYPTION_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		"DK_HASH_KEY=BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+		"DK_UPLOAD_DIR=./data/uploads",
+		"DK_OWNER_PHONES=",
+		"DK_FEATURE_XENDIT=false",
+		"DK_FEATURE_WA_SEND=false",
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			if err := cmd.Process.Kill(); err != nil {
+				t.Log(err)
+			}
+			if err := cmd.Wait(); err != nil {
+				t.Log(err)
+			}
+		}
+	}()
+	client := &http.Client{Timeout: time.Second}
+	for {
+		resp, e := client.Get("http://" + addr + "/healthz")
+		if e == nil {
+			if err := resp.Body.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("unexpected /healthz status: %d", resp.StatusCode)
+			}
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("main() child never became healthy")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Wait()
+	waited = true
+	if err != nil {
+		t.Fatalf("main() child did not exit 0 on SIGTERM: %v", err)
+	}
+}
