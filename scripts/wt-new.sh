@@ -4,6 +4,7 @@
 #   scripts/wt-new.sh codex  T-001 prototype          # feat/T-001-prototype from origin/main
 #   scripts/wt-new.sh codex  BUG-004 hold-timer       # fix/BUG-004-hold-timer from origin/main
 #   scripts/wt-new.sh gemini T-001 prototype          # test/T-001-prototype from origin/feat/T-001-prototype
+#   scripts/wt-new.sh gemini T-105 test-plan          # test/T-105-test-plan from origin/main (card owned by gemini)
 set -euo pipefail
 
 agent=${1:?usage: wt-new.sh <codex|gemini> <T-xxx|BUG-xxx> <slug>}
@@ -22,7 +23,14 @@ case "$agent" in
   gemini)
     port=8082
     branch="test/$task-$slug"
-    base="origin/feat/$task-$slug"
+    # QA on a Codex card branches from Codex's feat/ branch. A card Gemini owns
+    # itself (e.g. T-105, T-205) has no feat/ branch and starts from origin/main.
+    card="$root/docs/tasks/$task.md"
+    if [[ -f $card ]] && grep -qE '^owner:[[:space:]]*gemini([[:space:]]|$)' "$card"; then
+      base=origin/main
+    else
+      base="origin/feat/$task-$slug"
+    fi
     ;;
   *) echo "agent must be codex or gemini" >&2; exit 1 ;;
 esac

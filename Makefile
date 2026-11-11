@@ -25,14 +25,16 @@ migrate-check:    ## up -> down -> up on a throwaway database
 
 gen: sqlc templ css
 
+# Each generator is skipped until its inputs exist (sqlc.yaml, *.templ, input.css),
+# so `make run` works from T-101 onward without the generator tools installed.
 sqlc:
-	sqlc generate
+	@if [ -f sqlc.yaml ]; then sqlc generate; else echo "sqlc: no sqlc.yaml yet, skipped"; fi
 
 templ:
-	templ generate
+	@if [ -n "$$(find cmd internal web -name '*.templ' 2>/dev/null | head -n 1)" ]; then templ generate; else echo "templ: no .templ files yet, skipped"; fi
 
 css:
-	tailwindcss -i web/static/css/input.css -o web/static/css/app.css --minify
+	@if [ -f web/static/css/input.css ]; then tailwindcss -i web/static/css/input.css -o web/static/css/app.css --minify; else echo "css: no web/static/css/input.css yet, skipped"; fi
 
 run: gen
 	go run ./cmd/dropkilat
