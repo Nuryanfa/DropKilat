@@ -42,7 +42,7 @@ Standalone: `otp_challenges`, `webhook_events`, `outbox`, `audit_log`.
 | `buyers` | Verified buyer phone | One row per phone across all shops |
 | `buyer_sessions` | Buyer browser sessions (90 days) | |
 | `buyer_verifications` | Pending buyer-initiated WA codes (`DK-XXXX`) | Page holds the nonce; WA webhook resolves the code |
-| `orders` | Hold → paid → shipped → completed | Status machine in `docs/app-flow.md` §5 |
+| `orders` | Hold → paid → shipped → completed | Status machine in `docs/app-flow.md` §5; `holds_stock` (000003) says whether it consumes stock |
 | `waitlist_entries` | FIFO queue per variant | One `waiting` row per buyer per variant (partial unique index) |
 | `payments` | One row per payment attempt | `UNIQUE (provider, provider_ref)` |
 | `webhook_events` | Raw inbound webhooks (Xendit, WhatsApp) | `UNIQUE (provider, event_id)` = idempotency |
@@ -63,101 +63,128 @@ Standalone: `otp_challenges`, `webhook_events`, `outbox`, `audit_log`.
 
 ## 4. Row level security
 
-Tenant tables (`drops`, `drop_photos`, `drop_variants`, `orders`, `waitlist_entries`, `payments`, `seller_social_links`, `reports`) have `FORCE ROW LEVEL SECURITY` with one policy:
+Tenant tables (`drops`, `drop_photos`, `drop_variants`, `orders`, `waitlist_entries`, `payments`, `seller_social_links`, `reports`) have `FORCE ROW LEVEL SECURITY`. The tenant policy from migration 000001 is:
 
 ```sql
 USING (app_is_system() OR seller_id = app_seller_id())
 ```
 
-The app connects as `dropkilat_app` (not the owner) and sets per transaction:
+Migration 000002 (ADR 0004, task T-102) narrows `app_is_system()` to `system` only and adds read policies for `public`/`buyer` and own-row write policies for `buyer`.
 
-| Context | Setting |
-| --- | --- |
-| Seller dashboard request | `SET LOCAL app.seller_id = '<seller uuid>'` |
-| Workers, webhook processing | `SET LOCAL app.role = 'system'` |
-| Buyer-facing reads and claims | `SET LOCAL app.role = 'public'` |
+The app connects as `dropkilat_app` (not the owner) and sets the context per transaction through `platform/db`:
 
-With nothing set, tenant tables return zero rows. Verified: as seller B, `SELECT count(*) FROM orders` returns 0 while seller A has orders; `DELETE FROM audit_log` as the app role fails with permission denied.
+| Context | Helper | Setting | Can do |
+| --- | --- | --- | --- |
+| Seller dashboard request | `WithSellerTx` | `SET LOCAL app.seller_id = '<seller uuid>'` | Own tenant rows |
+| Workers, webhook processing, **every stock or queue change** (§6a) | `WithSystemTx` | `SET LOCAL app.role = 'system'` | Everything |
+| Verified buyer, no stock change | `WithBuyerTx` | `app.role = 'buyer'`, `app.buyer_id = '<buyer uuid>'` | Read published catalog, own orders/entries/payments; update own orders and entries; report on own orders |
+| Anonymous page views | `WithPublicTx` | `SET LOCAL app.role = 'public'` (read-only tx) | Read published catalog and verified social links |
+
+With nothing set, tenant tables return zero rows. As the app role, `DELETE FROM audit_log` fails with permission denied. Results of the 000002 policies are recorded in ADR 0004.
 
 RLS is the second line of defence. Every seller query still filters by `seller_id` explicitly, and buyer queries filter by `buyer_id` from the session.
 
-## 5. Claim query (verified)
+## 5. Claim (reference, verified)
 
-Run in one transaction. Verified with 40 concurrent buyers on 5 stock: exactly 5 `held` orders, `available = 0`.
-
-```sql
-BEGIN;
-SET LOCAL app.role = 'public';
--- 1. serialize this buyer within this drop (max_per_buyer check without races)
-SELECT pg_advisory_xact_lock(hashtextextended($1::text || $2::text, 0));   -- drop_id, buyer_id
--- 2. active orders of this buyer in this drop
-SELECT coalesce(sum(qty), 0) FROM orders
- WHERE drop_id = $1 AND buyer_id = $2
-   AND status IN ('held','proof_submitted','paid','shipped','completed','disputed');
---    if count + qty > drops.max_per_buyer → abort with "already_claimed"
--- 3. atomic decrement + hold
-WITH dec AS (
-  UPDATE drop_variants SET available = available - $3          -- qty
-   WHERE id = $4 AND drop_id = $1 AND available >= $3           -- variant_id
-  RETURNING id, price, seller_id, drop_id)
-INSERT INTO orders (code, seller_id, drop_id, variant_id, buyer_id, qty, unit_price, amount,
-                    payment_mode, status, hold_expires_at)
-SELECT $5, seller_id, drop_id, id, $2, $3, price, price * $3, $6, 'held',
-       now() + make_interval(mins => $7)
-  FROM dec
-RETURNING id;
---    0 rows → INSERT INTO waitlist_entries ... ON CONFLICT DO NOTHING; return position
--- 4. INSERT INTO outbox (kind 'wa.payment_link', dedupe_key 'order:<id>:payment_link')
-COMMIT;
-```
-
-The drop must be `live` and `now()` between `opens_at` and `closes_at`; check it in the same transaction (`SELECT ... FROM drops WHERE id = $1 AND status = 'live' FOR SHARE`).
-
-## 6. Expiry and promotion (verified)
-
-One transaction per expired order; several workers can run in parallel thanks to `SKIP LOCKED`. Verified with 3 parallel workers: 2 expired holds → 2 waitlist buyers promoted, `available` back to 0, the third waiting buyer untouched.
+One transaction under `system` (ADR 0004). `$now` comes from `clock.Clock` (ADR 0005). Verified on PostgreSQL 16: 500 buyers × 2 claims each from 40 parallel connections on 50 stock gave exactly 50 `held`, 450 `waiting`, and the invariant held.
 
 ```sql
 BEGIN;
 SET LOCAL app.role = 'system';
--- 1. expire one hold and return its stock
-WITH exp AS (
-  SELECT o.id FROM orders o JOIN drops d ON d.id = o.drop_id
-   WHERE o.status = 'held'
-     AND o.hold_expires_at + make_interval(secs => d.grace_seconds) < now()
-   ORDER BY o.hold_expires_at
-   FOR UPDATE OF o SKIP LOCKED LIMIT 1),
-upd AS (
-  UPDATE orders o SET status = 'expired', ended_at = now()
-    FROM exp WHERE o.id = exp.id
-  RETURNING o.variant_id, o.qty)
-UPDATE drop_variants v SET available = available + upd.qty
-  FROM upd WHERE v.id = upd.variant_id
-RETURNING v.id;                                   -- variant to promote on
--- 2. promote the oldest waiting buyer on that variant (if the drop is still live)
-WITH nxt AS (
-  SELECT w.id, w.buyer_id, w.qty, w.variant_id FROM waitlist_entries w
-   WHERE w.variant_id = $variant AND w.status = 'waiting'
-   ORDER BY w.created_at, w.id
-   FOR UPDATE SKIP LOCKED LIMIT 1),
-dec AS (
-  UPDATE drop_variants v SET available = available - nxt.qty
-    FROM nxt WHERE v.id = nxt.variant_id AND v.available >= nxt.qty
-  RETURNING v.id, v.price, v.seller_id, v.drop_id, nxt.buyer_id, nxt.qty, nxt.id AS entry_id),
-ins AS (
-  INSERT INTO orders (code, seller_id, drop_id, variant_id, buyer_id, qty, unit_price, amount,
-                      payment_mode, source, status, hold_expires_at)
-  SELECT $code, seller_id, drop_id, id, buyer_id, qty, price, price * qty,
-         $mode, 'waitlist', 'held', now() + make_interval(mins => $hold)
-    FROM dec
-  RETURNING id)
-UPDATE waitlist_entries w SET status = 'offered', offered_at = now(), order_id = ins.id
-  FROM ins, dec WHERE w.id = dec.entry_id;
--- 3. outbox 'wa.waitlist_turn' for the promoted buyer
+-- 1. the drop must be live (plain read, no FOR SHARE)
+SELECT max_per_buyer, hold_minutes, payment_mode FROM drops
+ WHERE id = $drop AND status = 'live' AND $now >= opens_at AND $now < closes_at;
+--    0 rows → drop-not-live
+--    buyer blocked in this shop (shop_buyer_blocks, T-406) → buyer-blocked
+-- 2. serialize this buyer within this drop (max_per_buyer without races)
+SELECT pg_advisory_xact_lock(hashtextextended($drop::text || $buyer::text, 0));
+-- 3. quantity this buyer already has in this drop
+SELECT coalesce(sum(qty), 0) FROM orders
+ WHERE drop_id = $drop AND buyer_id = $buyer
+   AND status IN ('held','proof_submitted','paid','shipped','completed','disputed');
+--    sum + $qty > max_per_buyer → already-claimed
+-- 4. lock the variant: every stock or queue change on a variant takes this lock first
+SELECT available, price, seller_id FROM drop_variants
+ WHERE id = $variant AND drop_id = $drop FOR UPDATE;
+-- 5. queue first
+SELECT EXISTS (SELECT 1 FROM waitlist_entries WHERE variant_id = $variant AND status = 'waiting');
+-- 6a. no one waiting and available >= $qty → hold
+UPDATE drop_variants SET available = available - $qty WHERE id = $variant;
+INSERT INTO orders (code, seller_id, drop_id, variant_id, buyer_id, qty, unit_price, amount,
+                    payment_mode, status, hold_expires_at)         -- holds_stock defaults to true
+VALUES ($code, $seller, $drop, $variant, $buyer, $qty, $price, $price * $qty,
+        $mode, 'held', $now + make_interval(mins => $hold_minutes));
+INSERT INTO outbox (kind, dedupe_key, payload) VALUES ('wa.payment_link', 'order:<id>:payment_link', ...);
+-- 6b. otherwise → enqueue, then promote (§6); if this buyer's entry was offered the result is "held"
+INSERT INTO waitlist_entries (seller_id, drop_id, variant_id, buyer_id, qty)
+VALUES ($seller, $drop, $variant, $buyer, $qty)
+ON CONFLICT (variant_id, buyer_id) WHERE status = 'waiting' DO NOTHING;
+-- waitlist.PromoteFit(tx, $variant, $now)
 COMMIT;
 ```
 
-Before promoting, skip entries whose buyer already has an active order in the drop (`status = 'skipped'`). The same promotion step runs when a hold is cancelled or a manual proof is rejected.
+## 6. Expiry and promotion (reference, verified)
+
+One transaction per expired order under `system`. Several workers can run in parallel thanks to `SKIP LOCKED`. Verified on PostgreSQL 16: 3 parallel expirers released 10 holds while 30 new buyers claimed. Waitlist positions #1–#10 were promoted in order, all 30 newcomers were queued behind them, and the invariant held.
+
+```sql
+BEGIN;
+SET LOCAL app.role = 'system';
+-- 1. pick one due hold (lock order: order row → variant row → waitlist entries)
+SELECT o.id, o.variant_id, o.qty FROM orders o JOIN drops d ON d.id = o.drop_id
+ WHERE o.status = 'held'
+   AND o.hold_expires_at + make_interval(secs => d.grace_seconds) < $now
+ ORDER BY o.hold_expires_at
+ FOR UPDATE OF o SKIP LOCKED LIMIT 1;
+SELECT available FROM drop_variants WHERE id = $variant FOR UPDATE;
+-- 2. expire it and return its stock in the same transaction
+UPDATE orders SET status = 'expired', holds_stock = false, ended_at = $now WHERE id = $order;
+UPDATE drop_variants SET available = available + $qty WHERE id = $variant;
+-- 3. waitlist.PromoteFit(tx, $variant, $now)
+COMMIT;
+```
+
+`waitlist.PromoteFit(tx, variantID, now)` assumes the variant row is locked. It does nothing unless the drop is `live` and `now < closes_at`. Then it loops:
+
+```sql
+-- next candidate: oldest waiting entry that fits (first fit in FIFO order)
+SELECT id, buyer_id, qty FROM waitlist_entries
+ WHERE variant_id = $variant AND status = 'waiting' AND qty <= $available
+   AND id <> ALL ($tried)
+ ORDER BY created_at, id
+ FOR UPDATE SKIP LOCKED LIMIT 1;
+--   none → stop
+--   NOT pg_try_advisory_xact_lock(hashtextextended($drop::text || $buyer::text, 0))
+--       → buyer is claiming right now: add to $tried, keep waiting, next candidate
+--   buyer blocked in this shop, or active qty + entry qty > max_per_buyer
+--       → UPDATE waitlist_entries SET status = 'skipped'; next candidate
+UPDATE drop_variants SET available = available - $qty WHERE id = $variant;
+INSERT INTO orders (code, seller_id, drop_id, variant_id, buyer_id, qty, unit_price, amount,
+                    payment_mode, source, status, hold_expires_at)
+VALUES ($code, $seller, $drop, $variant, $buyer, $qty, $price, $price * $qty,
+        $mode, 'waitlist', 'held', $now + make_interval(mins => $hold_minutes));
+UPDATE waitlist_entries SET status = 'offered', offered_at = $now, order_id = $order WHERE id = $entry;
+INSERT INTO outbox (kind, dedupe_key, payload) VALUES ('wa.waitlist_turn', 'order:<id>:waitlist_turn', ...);
+-- repeat while available > 0
+```
+
+## 6a. Stock paths (complete list)
+
+Only these change `drop_variants.available` or `stock_total`, or `orders.holds_stock`. Each runs in one `system` transaction that locks the variant row first, and each ends with `PromoteFit` when stock was released or added.
+
+| # | Path | Package | Effect |
+| --- | --- | --- | --- |
+| 1 | Claim | `order` | `available − qty`, order `held` |
+| 2 | Promotion | `waitlist` | `available − qty`, order `held` (source `waitlist`) |
+| 3 | Expiry | `order` (expirer) | `held → expired`, release |
+| 4 | Buyer cancels a hold | `order` | `held → cancelled`, release |
+| 5 | Seller rejects a proof (optionally blocks the buyer, T-406) | `order` | `proof_submitted → rejected`, release |
+| 6 | Buyer cancels after the 6 h review window | `order` | `proof_submitted → cancelled`, release |
+| 7 | Late payment after expiry | `payment` → `order` | `expired → paid` with `available − qty`, `holds_stock = true`; no stock → `refund_pending`, no change |
+| 8 | Seller cancels a paid order | `order` | `paid → refund_pending`; release only if the seller chooses "kembalikan stok" |
+| 9 | Seller adds stock (draft, scheduled or live) | `drop` | `stock_total + n`, `available + n` |
+
+Invariant per variant, checked by T-205: `available + Σ qty (orders WHERE holds_stock) = stock_total` and `0 ≤ available ≤ stock_total`.
 
 ## 7. Webhook idempotency
 
@@ -188,3 +215,16 @@ A nightly job (`retention`) performs the deletes and writes one `audit_log` row 
 2. Never edit a merged migration. Add a new one.
 3. New tenant tables must include `seller_id` and the RLS policy in the same migration.
 4. Run `make migrate-check` (up → down → up on a fresh DB) in CI.
+
+## 10. Planned migrations
+
+Decided but not yet merged. Each lands in its task's PR; this section is removed once the migration is on `main`.
+
+| Migration | Task | Change |
+| --- | --- | --- |
+| `000002_rls_contexts` | T-102 | `app_is_system()` = `system` only; `app_is_public()`, `app_buyer_id()`; public/buyer policies (ADR 0004) |
+| `000003_orders_holds_stock` | T-203 | `orders.holds_stock` + CHECK (ADR 0005) |
+| `00000N_proof_review` | T-406 | `orders.review_due_at`, `orders.review_late_at`; table `shop_buyer_blocks (seller_id, buyer_id, reason, created_by, created_at, PRIMARY KEY (seller_id, buyer_id))` with the tenant RLS policy |
+| `00000N_usage_meter` | T-407 | `seller_monthly_usage (seller_id, month, confirmed_manual_orders, PRIMARY KEY (seller_id, month))`; `sellers.billing_exempt_until` |
+| `00000N_buyer_step_up` | T-503 | `buyer_sessions.stepped_up_at` (ADR 0003 amendment) |
+| `00000N_invoices` | T-901 | `invoices`, `invoice_lines` (spec in the card) |

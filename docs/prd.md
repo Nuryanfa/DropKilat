@@ -1,6 +1,6 @@
 # PRD — DropKilat MVP
 
-Owner: Nur Yanfa (product) · Tech lead: Claude · Status: draft v1 · Updated: 2026-11-06
+Owner: Nur Yanfa (product) · Tech lead: Claude · Status: draft v1.1 · Updated: 2026-11-11
 
 ## 1. Problem
 
@@ -45,7 +45,7 @@ North-star metric: **repeat drops per seller per month**.
 5. Buyer verification by WhatsApp (buyer sends a code from their own WA; fallback OTP).
 6. Claim engine: atomic stock decrement, 15-minute hold, automatic expiry, FIFO waitlist with automatic promotion.
 7. **Payment mode Manual** (default, free): buyer pays to the seller's own QRIS/bank account shown on the page, uploads proof, seller confirms or rejects.
-8. **Payment mode Otomatis** (behind a feature flag): dynamic QRIS through Xendit xenPlatform sub-account owned by the seller, automatic confirmation by webhook, 2% platform fee via split.
+8. **Payment mode Otomatis** (behind a feature flag): dynamic QRIS through Xendit xenPlatform sub-account owned by the seller, automatic confirmation by webhook, 2% platform fee via split. Only for sellers with ≥ 15 orders/month; variant price ≥ Rp20.000 (ADR 0006).
 9. Buyer address form after payment, seller enters tracking number, buyer confirms receipt.
 10. Order list, CSV export, shipping label print view.
 11. WhatsApp notifications: payment link, reminder 5 minutes before the hold ends, paid, waitlist turn, shipped.
@@ -78,7 +78,7 @@ North-star metric: **repeat drops per seller per month**.
 | S-4 | As a seller I create a drop with variants. | Validation: price ≥ Rp1.000, stock 1–10.000, open time in the future, hold 5–30 minutes. Draft can be edited; a live drop can only add stock or close early. |
 | S-5 | As a seller I share one link. | URL `/d/{shop_slug}/{drop_slug}`; OG image and title for WA/IG previews. |
 | S-6 | As a seller I watch the drop live. | Dashboard shows available / held / paid / waitlist counts updating within 2 s. |
-| S-7 | As a seller I confirm a manual payment. | One tap Confirm or Reject (with reason). Reject releases stock to the waitlist. |
+| S-7 | As a seller I confirm a manual payment. | One tap Confirm or Reject (with reason). Reject releases stock to the waitlist. "Tolak dan blokir pembeli di toko ini" also blocks that buyer in this shop only. Proofs not reviewed in time are flagged "Terlambat direview" and the seller is warned (§6). |
 | S-8 | As a seller I ship. | Enter tracking number per order or bulk via CSV; buyer is notified. |
 | S-9 | As a seller I export orders. | CSV with order code, buyer name, phone (masked unless paid), address, variant, qty, amount, status. |
 
@@ -87,7 +87,7 @@ North-star metric: **repeat drops per seller per month**.
 | ID | Story | Acceptance criteria |
 | --- | --- | --- |
 | B-1 | As a buyer I open the link and see whether the seller is real. | Badges, linked handle, track record and "Seller baru" label shown above the fold. |
-| B-2 | As a buyer I verify my WhatsApp once. | Tap "Verifikasi lewat WhatsApp" → WA opens with a prefilled code → after sending, page continues within 5 s. Remembered on this device for 90 days. |
+| B-2 | As a buyer I verify my WhatsApp once. | Tap "Verifikasi lewat WhatsApp" → WA opens with a prefilled code → after sending, page continues within 5 s. Remembered on this device for 90 days. Code valid 5 minutes; the WA reply explains the code is a DropKilat login; saved addresses stay masked until a fresh verification (ADR 0003). |
 | B-3 | As a buyer I claim an item. | If stock: hold created, timer shown, payment instructions shown, WA message sent. If no stock: placed in waitlist with position. Never both. |
 | B-4 | As a buyer I pay within the hold. | Manual: upload proof (JPG/PNG/PDF ≤ 5 MB) before the timer ends; status becomes "Menunggu konfirmasi seller". Otomatis: QRIS on the page; status becomes "Lunas" within 10 s of payment. |
 | B-5 | As a buyer in the waitlist I get my turn. | When stock is released I get a WA message and a fresh hold of the same length. |
@@ -100,19 +100,22 @@ North-star metric: **repeat drops per seller per month**.
 | --- | --- |
 | Default hold | 15 minutes (seller can set 5–30) |
 | Grace before release | 2 minutes after hold end (late payments in flight) |
-| Manual proof review window | Seller must confirm/reject within 6 hours; after that the order is flagged and the buyer can cancel |
+| Manual proof review window | During a live drop: 60 minutes, then flagged "Terlambat direview" and the seller is warned; no auto-reject. Outside a live drop: 6 hours, then flagged and warned. In both cases the buyer can cancel 6 hours after submitting. |
+| Block a buyer | Seller can reject a proof and block that buyer **in this shop only** |
 | Max per buyer per drop | Default 1, seller can set up to 10 |
 | New seller limits | First 3 drops: max 30 total stock and Rp5.000.000 total value per drop, until ≥ 90% of paid orders are confirmed received |
-| Platform fee (Otomatis) | 2% of net amount after PG fee, min Rp1.500, max Rp7.500 per order |
-| Platform fee (Manual) | Rp0 in MVP (free tier, max 50 orders per seller per month) |
+| Platform fee (Otomatis) | 2% of net amount after PG fee, min Rp1.000, max Rp7.500 per order |
+| Otomatis eligibility | Seller has ≥ 15 orders per month; every variant price ≥ Rp20.000 |
+| Platform fee (Manual) | Free during the pilot. After Gate D: 50 confirmed orders per seller per calendar month free, then Rp1.000 per confirmed order, billed on a monthly invoice. Orders are never blocked. |
 | Auto-complete | Order becomes "Diterima" 7 days after "Dikirim" if the buyer does not report |
 
-## 7. Pricing (hypothesis)
+## 7. Pricing (decided 2026-11-11 by PO, ADR 0006; amounts to validate in the pilot)
 
 | Plan | Price | Includes |
 | --- | --- | --- |
-| Gratis | Rp0 | Manual payment mode, hold and waitlist, up to 50 orders/month, "Powered by DropKilat" |
-| Otomatis | 2% per paid order | Dynamic QRIS, automatic confirmation, WA notifications |
+| Pilot | Rp0 | Everything, until Gate D |
+| Manual | 50 confirmed orders/month free, then Rp1.000 per confirmed order (monthly invoice) | Manual payment mode, hold and waitlist, "Powered by DropKilat" |
+| Otomatis | 2% per paid order (min Rp1.000, max Rp7.500) | Sellers with ≥ 15 orders/month, items ≥ Rp20.000. Dynamic QRIS, automatic confirmation, WA notifications |
 | Pro (later) | Rp79–149k / month + 2% | Customer list, priority access, broadcast, raffle, multi-admin, analytics, custom subdomain |
 
 ## 8. Risks (summary)
@@ -131,3 +134,5 @@ North-star metric: **repeat drops per seller per month**.
 2. Meta Cloud API: confirm that utility templates inside an open customer service window are free for our category and region.
 3. How many orders per month does a typical small seller really have? (from interviews)
 4. Is 15 minutes right for buyers who pay by bank transfer in Manual mode?
+5. Billing details: how "≥ 15 orders/month" is measured, whether refunded orders count, what happens to unpaid invoices (defaults in ADR 0006, confirm in T-806 and T-901).
+6. Tax and legal check before the first invoice (invoice format, PPN).

@@ -49,17 +49,22 @@ sequenceDiagram
   participant WA as Buyer's WhatsApp
   participant M as Meta Cloud API
   P->>A: POST /api/buyer/verify/start
-  A-->>P: code DK-7Q2M, wa.me link
-  P->>WA: open wa.me/<number>?text=DK-7Q2M
-  WA->>M: buyer sends "DK-7Q2M"
+  A-->>P: code DK-7Q2M (valid 5 min, single use), wa.me link
+  P->>WA: open wa.me/<number>?text=DK-7Q2M (kode login DropKilat)
+  WA->>M: buyer sends "DK-7Q2M (kode login DropKilat)"
   M->>A: POST /webhooks/whatsapp (from, text)
-  A->>A: match code, bind phone to pending verification
-  A->>M: reply "Nomor terverifikasi" (inside 24h window)
+  A->>A: extract DK-XXXX, match a pending unexpired code, bind phone to it
+  A->>M: reply wa.verify_ok: what the code is for + "never send a code someone gave you" (inside 24h window)
   P->>A: poll / SSE: verification status
   A-->>P: verified, set buyer session cookie
 ```
 
 Fallback when the buyer cannot open WA on this device: OTP template sent to the typed number.
+
+Phishing mitigations (ADR 0003 amendment):
+- Codes expire 5 minutes after start, bind one phone, and cannot be reused.
+- The `wa.verify_ok` reply says the number was just logged in to DropKilat on the device that requested the code, names the shop, and warns never to send a DropKilat code from someone else (copy in `docs/design.md` §9).
+- The recipient name, phone and address of earlier orders are masked on buyer pages. Showing them needs a step-up: a fresh code or OTP on this session in the last 10 minutes.
 
 ## 4. Claim
 
@@ -69,17 +74,19 @@ flowchart TD
   B -- no --> X[Show reason]
   B -- yes --> C{Rate limit ok?}
   C -- no --> X
-  C -- yes --> D[TX: advisory lock drop+buyer]
-  D --> E{Active orders < max_per_buyer?}
+  C -- yes --> D[TX system: advisory lock drop+buyer]
+  D --> E{Active qty + qty <= max_per_buyer?}
   E -- no --> X2[You already have this item]
-  E -- yes --> F{UPDATE available >= qty}
-  F -- 1 row --> G[INSERT order held, hold_expires_at]
+  E -- yes --> V[Lock variant row FOR UPDATE]
+  V --> F{Nobody waiting AND available >= qty?}
+  F -- yes --> G[available - qty, INSERT order held, hold_expires_at = now + hold]
   G --> H[Outbox: WA payment link]
   H --> I[Return hold + payment instructions]
-  F -- 0 rows --> J{Buyer already waiting?}
-  J -- yes --> K[Return position]
-  J -- no --> L[INSERT waitlist_entry waiting]
-  L --> K
+  F -- no --> L[INSERT waitlist_entry waiting, ON CONFLICT do nothing]
+  L --> P[PromoteFit: may serve this buyer at once]
+  P --> Q{This buyer offered?}
+  Q -- yes --> I
+  Q -- no --> K[Return position]
 ```
 
 ## 5. Order state machine
@@ -110,11 +117,12 @@ stateDiagram-v2
   rejected --> [*]
 ```
 
-Stock effects:
-- Entering `held` decrements `available` (inside the claim or promotion transaction).
-- Leaving to `expired`, `cancelled`, `rejected` increments `available` and triggers promotion.
-- `proof_submitted` keeps the stock locked (no timer) until the seller decides.
-- `refund_pending` from `paid` (seller cancel) does **not** return stock automatically; the seller decides.
+Stock effects (complete list of stock paths: `docs/database-schema.md` §6a; accounting rule: ADR 0005):
+- Entering `held` decrements `available` and sets `holds_stock = true` (inside the claim or promotion transaction).
+- Leaving to `expired`, `cancelled`, `rejected` sets `holds_stock = false`, increments `available` and runs promotion, all in one transaction.
+- `proof_submitted` keeps the stock locked (no hold timer). The seller has a review deadline instead (§7).
+- `expired → paid` re-reserves stock (`holds_stock = true`, `available − qty`). Without stock the order goes to `refund_pending` and no stock moves.
+- `refund_pending` from `paid` (seller cancel) returns stock only if the seller chooses "kembalikan stok"; otherwise `holds_stock` stays true.
 
 ## 6. Hold expiry and waitlist promotion
 
@@ -123,11 +131,11 @@ sequenceDiagram
   participant W as expirer worker
   participant DB as PostgreSQL
   participant O as outbox worker
-  loop every 2 s
-    W->>DB: SELECT held orders WHERE hold_expires_at + grace < now() FOR UPDATE SKIP LOCKED LIMIT 100
-    W->>DB: UPDATE order to expired, available plus qty
-    W->>DB: SELECT first waiting entry for variant FOR UPDATE SKIP LOCKED
-    alt entry found
+  loop every 2 s, until no due hold is left
+    W->>DB: BEGIN; pick one held order WHERE hold_expires_at + grace < $now FOR UPDATE SKIP LOCKED
+    W->>DB: lock variant row; order expired, holds_stock false, available plus qty
+    loop PromoteFit while available > 0 and drop live
+      W->>DB: oldest waiting entry with qty <= available, FOR UPDATE SKIP LOCKED
       W->>DB: available minus qty, INSERT held order (source waitlist), entry offered
       W->>DB: INSERT outbox "Giliranmu, bayar dalam 15 menit"
     end
@@ -136,7 +144,13 @@ sequenceDiagram
   O->>O: deliver WA messages with retry/backoff
 ```
 
-If an offered buyer does not pay, their order expires like any other and the next entry is promoted. Entries are marked `skipped` if the buyer already has an active order for that variant.
+If an offered buyer does not pay, their order expires like any other and the next entry is promoted.
+
+Promotion rules (ADR 0005):
+- **First fit in FIFO order.** An entry whose qty does not fit keeps its place while smaller entries behind it are served.
+- **Skips.** An entry is `skipped` if its buyer is blocked in this shop or would exceed `max_per_buyer`. It stays `waiting` (and is tried next time) if the buyer is claiming at that moment.
+- **Triggers.** The same `PromoteFit` runs after every release (expiry, cancel, reject, review-window cancel, seller cancel with stock return), after a stock increase, and after every enqueue.
+- **Queue first.** A new claim never takes stock while someone is waiting.
 
 ## 7. Manual payment
 
@@ -152,6 +166,23 @@ sequenceDiagram
   A->>A: order -> paid, audit_log, outbox "Lunas"
   Note over S,A: Reject → order rejected, stock released, waitlist promoted, buyer notified with reason
 ```
+
+Review deadline (PO decision 2026-11-11, task T-406):
+
+| Proof submitted while… | `review_due_at` | At the deadline | Buyer may cancel |
+| --- | --- | --- | --- |
+| the drop is `live` | `proof_submitted_at + 60 min` | order flagged **Terlambat direview** (`review_late_at`), warning on the dashboard and by WA to the seller. No auto-reject. | from `proof_submitted_at + 6 h` |
+| the drop is not live | `proof_submitted_at + 6 h` | same flag and warning | from `proof_submitted_at + 6 h` |
+
+The `reviewer` worker sets the flags (`docs/backend.md` §5). A buyer cancel after 6 h is stock path 6.
+
+**Tolak dan blokir pembeli di toko ini.** Next to Reject, the seller can reject *and* block the buyer in one transaction:
+- The order is `rejected` and its stock released and promoted (path 5).
+- A row is added to `shop_buyer_blocks`, and the buyer's `waiting` entries in this shop become `skipped`.
+- One `audit_log` row is written.
+- From then on, claims and promotions for that buyer in this shop fail with `buyer-blocked`.
+
+The block is per shop only (PRD non-goal: no cross-shop blacklist). The seller can lift it in the shop profile.
 
 ## 8. Automatic payment (Xendit)
 

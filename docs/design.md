@@ -101,3 +101,28 @@ Radius 12 px for cards, 999 px for pills. Spacing scale 4 / 8 / 12 / 16 / 24 / 3
 ## 8. Prototype
 
 `prototype/` holds a clickable HTML prototype (no backend) for seller interviews: B1 → B2 → B3 with a "Simulasikan pembeli pertama tidak bayar" button that moves stock to waitlist user #1 and shows a mock WA message. Built in task T-001.
+
+## 9. Copy added 2026-11-11 (ADR 0003 amendment, ADR 0006, T-406, T-407)
+
+### Buyer verification and privacy
+- wa.me prefill: `DK-7Q2M (kode login DropKilat)`
+- WA reply `wa.verify_ok`:
+  > Kode DK-7Q2M diterima. Nomor ini sekarang masuk ke DropKilat di perangkat yang membuka halaman toko {shop}. Kode DropKilat hanya untuk login. Jangan pernah mengirim kode DropKilat yang diberikan orang lain, karena orang itu bisa masuk sebagai kamu.
+- Masked data on buyer pages: `Budi S****`, `+62812****789`, `Jl. Mawar ****, Bandung 40***`. Below it, a link: **Tampilkan data lengkap**. Tapping it starts a fresh verification, with the copy "Demi keamanan, verifikasi ulang WhatsApp kamu untuk melihat data lengkap."
+- Code expired: "Kode sudah kedaluwarsa. Minta kode baru, berlaku 5 menit."
+
+### Seller: proof review (S6, S5)
+- Late flag pill: **Terlambat direview** (`--danger` text with a word, never color alone).
+- Dashboard banner: "{n} bukti transfer menunggu lebih dari 60 menit. Pembeli sedang menunggu, segera konfirmasi atau tolak."
+- WA `wa.seller_review_late`: "Ada {n} bukti transfer di drop {drop} yang belum direview lebih dari {60 menit|6 jam}. Buka dashboard: {link}"
+- Buttons in the proof viewer: **Konfirmasi** · **Tolak** · **Tolak dan blokir pembeli di toko ini**
+- Block confirm dialog: "Pembeli ini tidak bisa mengambil barang atau masuk antrean di toko kamu lagi. Stok pesanan ini kembali ke antrean. Blokir hanya berlaku di toko kamu." Buttons: **Tolak dan blokir** · **Batal**
+- Shop profile (S7), blocked buyers list: masked phone, date, reason, button **Buka blokir**.
+- Buyer sees on claim (B2): "Kamu tidak bisa mengambil barang di toko ini." (`buyer-blocked`; no reason shown)
+- Buyer cancel after 6 h (B4): "Seller belum mengecek buktimu. Kamu bisa membatalkan pesanan ini." Button **Batalkan pesanan**
+
+### Seller: billing (S7, after Gate D)
+- Usage meter: "Bulan ini: {n} dari 50 pesanan gratis terkonfirmasi" and, above the quota, "{m} pesanan × Rp1.000 akan ditagihkan di invoice {bulan}".
+- During the pilot: "Masa pilot: semua fitur gratis."
+- Otomatis not eligible: "Mode Otomatis tersedia untuk toko dengan minimal 15 pesanan per bulan."
+- Otomatis price below the minimum: "Harga minimal Rp20.000 untuk mode Otomatis."
