@@ -7,19 +7,22 @@ Each package under `internal/` owns its tables and exposes a small service. Pack
 | Package | Owns | Exposes |
 | --- | --- | --- |
 | `seller` | `sellers`, `seller_sessions`, `otp_challenges` (seller_login) | `Login`, `VerifyOTP`, `Session`, `UpdateProfile`, `SetPaymentDestination` |
-| `trust` | `seller_social_links`, `seller_stats`, `reports`, verification fields on `sellers` | `Badges(sellerID)`, `CanOpenDrop`, `LinkSocial`, `Report`, `RecordOutcome` |
-| `drop` | `drops`, `drop_variants`, `drop_photos` | `Create`, `Update`, `Publish`, `Close`, `PublicView`, `LiveCounters` |
+| `trust` | `seller_social_links`, `seller_stats`, `reports`, `shop_buyer_blocks`, verification fields on `sellers` | `Badges(sellerID)`, `CanOpenDrop`, `LinkSocial`, `Report`, `RecordOutcome`, `IsBlocked(tx, sellerID, buyerID)`, `Block`, `Unblock` |
+| `drop` | `drops`, `drop_variants`, `drop_photos` | `Create`, `Update`, `Publish`, `Close`, `AddStock`, `PublicView`, `LiveCounters`; in-process SSE hub (ADR 0007) |
 | `buyer` | `buyers`, `buyer_sessions`, `buyer_verifications`, `otp_challenges` (buyer_verify) | `StartVerification`, `ResolveInboundCode`, `Session` |
-| `order` | `orders` | `Claim`, `SubmitProof`, `Confirm`, `Reject`, `Cancel`, `SetAddress`, `Ship`, `MarkReceived`, `ExpireDue` |
-| `waitlist` | `waitlist_entries` | `Enqueue`, `Position`, `Leave`, `PromoteNext(tx, variantID)` |
+| `order` | `orders` | `Claim`, `SubmitProof`, `Confirm`, `Reject(…, blockBuyer bool)`, `Cancel`, `SellerCancel(…, returnStock bool)`, `SetAddress`, `Ship`, `MarkReceived`, `ExpireDue`, `FlagLateReviews` |
+| `waitlist` | `waitlist_entries` | `Enqueue`, `Position`, `Leave`, `PromoteFit(tx, variantID, now)` |
 | `payment` | `payments`, `webhook_events` (xendit) | `Provider` interface; `HandleWebhook` |
 | `notify` | `outbox`, `webhook_events` (whatsapp) | `Enqueue(tx, Message)`, `Sender` interface, outbox worker |
-| `platform/*` | — | `db` (pool, `WithSellerTx`, `WithSystemTx`, `WithPublicTx`), `httpx` (middleware, errors), `config`, `clock` |
+| `billing` | `seller_monthly_usage`, `invoices`, `invoice_lines` | `RecordConfirmedOrder(tx, sellerID, at)`, `Usage(sellerID, month)`, monthly invoicer (T-407, T-901; ADR 0006) |
+| `platform/*` | — | `db` (pool, `WithSellerTx`, `WithSystemTx`, `WithBuyerTx`, `WithPublicTx`; contexts in ADR 0004), `httpx` (middleware, errors), `config`, `clock` |
 
 Rules:
 - Every state change runs inside a transaction obtained from `platform/db`; the helper sets the RLS context.
-- `order.Claim` calls `waitlist.Enqueue` and `notify.Enqueue` with the **same** `pgx.Tx`.
-- Time comes from `clock.Clock` (fake in tests). Never call `time.Now()` in domain code.
+- Every stock or queue change (the nine paths in `docs/database-schema.md` §6a) runs in `WithSystemTx`, inside `order`, `waitlist`, `drop` or `payment` only. It locks the variant row first and ends with `waitlist.PromoteFit` when stock was released or added. The handler authorises the actor before opening the transaction; buyer and seller IDs come from the session.
+- Buyer actions that move no stock (proof, address, received, report, leave waitlist) use `WithBuyerTx`. Anonymous page reads use `WithPublicTx` (read-only).
+- `order.Claim` calls `waitlist.Enqueue`, `waitlist.PromoteFit` and `notify.Enqueue` with the **same** `pgx.Tx`.
+- Time comes from `clock.Clock` (fake in tests). Never call `time.Now()` in domain code, and never use `now()` in SQL for deadlines or comparisons: pass `$now` (ADR 0005).
 - Money is `int64` rupiah; no `float64` in money paths (lint rule).
 
 ## 2. Key interfaces
@@ -59,9 +62,10 @@ JSON APIs return `application/json`; errors use RFC 9457 `application/problem+js
 | GET | `/api/buyer/verify/{nonce}` | Poll status; sets buyer cookie when verified | nonce |
 | POST | `/api/buyer/verify/otp` | Fallback: send OTP / check OTP | — |
 | POST | `/api/drops/{dropID}/claim` | Body `{variant_id, qty}` → `{result: "held"|"waitlisted", order?, position?}` | buyer |
-| GET | `/o/{code}` | Order page (HTML) | buyer (owner) |
+| GET | `/o/{code}` | Order page (HTML). Name, phone and address of earlier orders masked unless step-up in the last 10 min (ADR 0003) | buyer (owner) |
+| POST | `/api/buyer/step-up` | Start a fresh WA code / OTP for the current buyer session; on success sets `stepped_up_at` | buyer |
 | POST | `/api/orders/{code}/proof` | Multipart upload (manual mode) | buyer (owner) |
-| POST | `/api/orders/{code}/cancel` | Cancel while `held` | buyer (owner) |
+| POST | `/api/orders/{code}/cancel` | Cancel while `held`, or `proof_submitted` from 6 h after submission | buyer (owner) |
 | PUT | `/api/orders/{code}/address` | Shipping address | buyer (owner), status `paid` |
 | POST | `/api/orders/{code}/received` | Confirm receipt | buyer (owner), status `shipped` |
 | POST | `/api/orders/{code}/report` | Report a problem | buyer (owner) |
@@ -75,11 +79,14 @@ JSON APIs return `application/json`; errors use RFC 9457 `application/problem+js
 | GET/PUT | `/seller/profile` | Shop name, slug, timezone, payment destination |
 | POST | `/seller/social-links` · `/seller/social-links/{id}/check` | Link IG/TikTok |
 | GET/POST | `/seller/drops` | List / create |
-| GET/PUT | `/seller/drops/{id}` | Edit (draft only, except stock increase on live) |
+| GET/PUT | `/seller/drops/{id}` | Edit (draft only, except stock increase on live, which is stock path 9 and runs promotion) |
 | POST | `/seller/drops/{id}/publish` · `/unpublish` · `/close` | Lifecycle |
 | GET | `/seller/drops/{id}/live` | Live monitor (HTML + SSE `/seller/drops/{id}/stream`) |
 | GET | `/seller/orders?status=&drop=` | Orders list |
-| POST | `/seller/orders/{id}/confirm` · `/reject` | Manual payment decision |
+| POST | `/seller/orders/{id}/confirm` · `/reject` | Manual payment decision. Reject body `{reason, block_buyer: bool}` ("Tolak dan blokir pembeli di toko ini") |
+| POST | `/seller/orders/{id}/cancel` | Cancel a paid order → `refund_pending`; body `{reason, return_stock: bool}` |
+| GET · DELETE | `/seller/blocks` · `/seller/blocks/{buyerID}` | List and lift shop blocks |
+| GET | `/seller/billing` | Usage meter this month, invoices (T-407, T-901) |
 | POST | `/seller/orders/{id}/ship` · `/seller/orders/ship-bulk` | Tracking numbers |
 | GET | `/seller/drops/{id}/export.csv` · `/labels` | Export, print labels |
 
@@ -109,17 +116,22 @@ Webhook handlers only persist the event and enqueue processing in the same reque
 | `invalid-transition` | 409 | Order not in a status that allows the action |
 | `seller-not-verified` | 403 | Seller cannot publish before identity verification |
 | `new-seller-limit` | 422 | Stock or value above new-seller limits |
-| `validation` | 422 | Field errors in `errors[]` |
+| `validation` | 422 | Field errors in `errors[]` (includes variant price < Rp20.000 in an Otomatis drop) |
+| `buyer-blocked` | 403 | Seller blocked this buyer in this shop (T-406) |
+| `step-up-required` | 401 | Unmasked personal data needs a fresh verification (ADR 0003) |
+| `otomatis-not-eligible` | 403 | Seller below 15 orders/month cannot enable Otomatis (ADR 0006, T-806) |
 
 ## 5. Background workers
 
 | Worker | Interval | Work | Concurrency |
 | --- | --- | --- | --- |
 | `expirer` | 2 s | Expire due holds, promote waitlist (`docs/database-schema.md` §6) | 2 goroutines, `SKIP LOCKED` |
+| `reviewer` | 30 s | Flag `proof_submitted` orders past `review_due_at` (60 min during a live drop, 6 h otherwise) and warn the seller (`docs/app-flow.md` §7) | 1 |
 | `scheduler` | 5 s | `scheduled → live` at `opens_at`; `live → closed` at `closes_at`; auto-complete shipped orders after 7 days | 1 |
 | `webhooks` | 1 s | Process unprocessed `webhook_events` | 2, `SKIP LOCKED` |
 | `outbox` | 1 s | Deliver due messages; backoff 5 s, 30 s, 2 min, 10 min, 1 h; dead after 6 attempts | 4, `SKIP LOCKED` |
 | `retention` | daily 03:00 WIB | Privacy deletes (`docs/database-schema.md` §8) | 1 |
+| `invoicer` | monthly, 1st 04:00 WIB | Close last month's usage, create invoices (T-901, after Gate D) | 1 |
 
 All workers stop gracefully on SIGTERM (finish the current transaction, then exit).
 
@@ -127,25 +139,27 @@ All workers stop gracefully on SIGTERM (finish the current transaction, then exi
 
 | Stream | Event | Data |
 | --- | --- | --- |
-| `/api/drops/{id}/stream` | `stock` | `{variant_id, available, total}` (coalesced, max 1 per second per variant) |
+| `/api/drops/{id}/stream` | `stock` | `{variant_id, available, total}` (coalesced, every 500 ms at most) |
 | | `status` | `{drop_status}` |
 | | `order` | `{code, status, hold_expires_at}` (only for the session's buyer) |
 | `/seller/drops/{id}/stream` | `counters` | `{available, held, proof_submitted, paid, waiting}` |
 | | `event` | Feed line for the live monitor |
 
-Implementation: PostgreSQL `LISTEN/NOTIFY` on channel `drop_<id>` fan-out to SSE clients in-process. Clients reconnect with `Last-Event-ID`.
+Implementation (ADR 0007): in-process hub. Services call `hub.Touch(dropID)` / `hub.OrderChanged(buyerID, code)` **after commit**. Every 500 ms the hub reads counters for touched drops in one query and broadcasts; every live drop is refreshed every 5 s as a safety net. No `NOTIFY` in transactions. Clients reconnect with `Last-Event-ID`.
 
 ## 7. WhatsApp messages (templates)
 
 | Kind | When | Window |
 | --- | --- | --- |
-| `wa.verify_ok` | Buyer code received | Inside service window (free) |
+| `wa.verify_ok` | Buyer code received; explains the login and warns against forwarded codes (`docs/design.md` §9) | Inside service window (free) |
 | `wa.payment_link` | Hold created | Inside window if buyer verified in last 24 h, else utility template |
 | `wa.payment_reminder` | 5 min before hold end | Same |
 | `wa.waitlist_turn` | Promoted from waitlist | Same |
 | `wa.paid` / `wa.rejected` | Payment decided | Same |
 | `wa.shipped` | Tracking number entered | Utility template (often > 24 h) |
 | `wa.seller_otp` | Seller login | Authentication template |
+| `wa.seller_review_late` | Proof past `review_due_at` | Utility template to the seller |
+| `wa.seller_invoice` | Monthly invoice issued (T-901) | Utility template to the seller |
 
 `notify` decides template vs free-form by checking the buyer's last inbound message time.
 

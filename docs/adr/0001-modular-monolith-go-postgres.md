@@ -6,7 +6,7 @@ Status: accepted · Date: 2026-11-06
 One developer team (one human, three AI agents), one 2 vCPU / 4 GB VM, a core problem that is a concurrency problem on stock, and a need to deploy and debug cheaply.
 
 ## Decision
-One Go binary containing the HTTP server, SSE and background workers. PostgreSQL 17 is the only stateful dependency: stock, queues (outbox, webhook events), and real-time fan-out (`LISTEN/NOTIFY`). Server-rendered HTML (templ + htmx) instead of a separate SPA.
+One Go binary containing the HTTP server, SSE and background workers. PostgreSQL 17 is the only stateful dependency: stock and queues (outbox, webhook events). Real-time fan-out is in-process (amended by ADR 0007; originally `LISTEN/NOTIFY`). Server-rendered HTML (templ + htmx) instead of a separate SPA.
 
 ## Consequences
 - One deploy unit, one log stream, transactions across modules are possible.

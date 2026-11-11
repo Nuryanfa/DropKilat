@@ -20,11 +20,11 @@ You do not change production code. If a fix is one line and obvious, describe it
 | --- | --- |
 | Oversell | Many parallel claims; claims racing expiry; cancel during promotion; stock increase on a live drop |
 | Max per buyer | Two tabs, two devices, same buyer; qty > 1 |
-| Waitlist | Buyer joins twice; buyer already holding; promotion when drop just closed |
+| Waitlist | Buyer joins twice; buyer already holding; promotion when drop just closed; newcomer racing a release (queue jumping); qty 2 at the head; blocked buyer in the queue |
 | Timers | Proof upload 1 s after hold end; late payment webhook after expiry; clock skew (fake clock) |
 | Payments | Duplicate, out-of-order and forged webhooks; amount mismatch; refund twice |
-| Authz / IDOR | Buyer A on buyer B's order code; seller A on seller B's drop/order ids; dashboard without CSRF token |
-| Verification | Code brute force; reuse of a verified code; code from a different phone |
+| Authz / IDOR | Buyer A on buyer B's order code; seller A on seller B's drop/order ids; dashboard without CSRF token; every RLS context in ADR 0004 with the `WHERE` clause removed |
+| Verification | Code brute force; reuse of a verified code; code from a different phone; forwarded code (phishing) then reading saved addresses; code after 5 minutes |
 | Uploads | Non-image with image extension, polyglot PDF, 50 MB file, path traversal names, EXIF |
 | Rate limits | Claim spam, OTP spam per number and per IP |
 | Privacy | Phones/addresses in logs, CSV export of unpaid orders, retention job |
@@ -35,8 +35,11 @@ You do not change production code. If a fix is one line and obvious, describe it
 ```
 for each variant:
   available >= 0
-  available + sum(qty of orders in held, proof_submitted, paid, shipped, completed, disputed) == stock_total
+  0 <= available <= stock_total
+  available + sum(qty of orders WHERE holds_stock) == stock_total        -- ADR 0005
+  no order in expired/cancelled/rejected has holds_stock
   no buyer has two 'waiting' entries for the same variant
+  promotions follow FIFO order (first fit); no new claim got stock while a fitting entry was waiting
 for each order: status transition was allowed by docs/app-flow.md §5
 ```
 

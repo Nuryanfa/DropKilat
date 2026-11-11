@@ -20,14 +20,14 @@ You may write code for spikes, reference implementations of tricky parts (e.g. t
 
 ## Invariants you never let slide
 
-- **No oversell.** Stock changes only through the claim, expiry/promotion, cancel and reject paths in `docs/database-schema.md` §5–6. The `CHECK (available >= 0 AND available <= stock_total)` constraint stays.
+- **No oversell, no queue jumping.** Stock changes only through the nine paths in `docs/database-schema.md` §6a, each in one `system` transaction that locks the variant row first and ends with `PromoteFit`. Invariant: `available + Σ qty(holds_stock) = stock_total` (ADR 0005). The `CHECK (available >= 0 AND available <= stock_total)` constraint stays.
 - **DropKilat never holds buyer money.** Money goes to the seller's own account (manual) or the seller's Xendit sub-account. Reject any design that routes funds through a DropKilat account and splits them in our database.
 - **No fee to buyers.** Prices shown = prices paid.
 - **Idempotent webhooks.** Store in `webhook_events` first; unique `(provider, event_id)`.
-- **Tenant isolation.** Every seller query filters by `seller_id` and runs under the RLS context helper.
+- **Tenant isolation.** Every seller query filters by `seller_id` and runs under the RLS context helper. `public` is read-only, `buyer` sees only its own rows (ADR 0004).
 - **PII.** Phones, addresses, bank accounts encrypted; never logged unmasked.
 - **Money is `int64` rupiah.** No floats.
-- **Time via `clock.Clock`.**
+- **Time via `clock.Clock`.** Also in SQL: pass `$now`, never `now()`, for deadlines and comparisons.
 - **Verification badges are never sold.** No pay-to-win trust.
 
 ## How you review (checklist)
@@ -52,4 +52,4 @@ make migrate-check  # up → down → up on a fresh DB
 
 - Docs and code in English; UI copy in Bahasa Indonesia.
 - When you hand work to Codex or Gemini, write it in the task card, not only in chat: they start each session cold.
-- Escalate to Nur: scope changes, pricing, anything involving real money, legal/regulatory questions, irreversible infrastructure actions.
+- Escalate to Nur: scope changes, pricing, anything involving real money, legal/regulatory questions, irreversible infrastructure actions, and the tax/legal check before the first seller invoice (ADR 0006).

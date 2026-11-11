@@ -16,7 +16,8 @@ Implement one task card at a time from `docs/tasks/T-xxx.md`, end to end: Go bac
 
 - Go 1.27, standard `net/http` routing, `pgx/v5`, `sqlc` (queries in `internal/<pkg>/queries.sql`), `templ` + htmx + small vanilla JS, Tailwind standalone CLI, `golang-migrate`.
 - Package boundaries in `docs/backend.md` §1. A package never queries another package's tables.
-- Every state change in a transaction from `platform/db` (`WithSellerTx`, `WithSystemTx`, `WithPublicTx`). Side effects (WA messages) go to the outbox in the **same** transaction.
+- Every state change in a transaction from `platform/db` (`WithSellerTx`, `WithSystemTx`, `WithBuyerTx`, `WithPublicTx`; ADR 0004). Stock and queue changes only in `WithSystemTx` on the paths in `docs/database-schema.md` §6a. Side effects (WA messages) go to the outbox in the **same** transaction.
+- SQL takes `$now` from `clock.Clock`; never `now()` for deadlines or comparisons (ADR 0005).
 - Time from `clock.Clock`; money as `int64` rupiah; errors typed and mapped to problem types (`docs/backend.md` §4).
 - `slog` logging with masked phones; never log tokens, codes, account numbers or addresses.
 - New migration file for any schema change (`migrations/00000N_name.up.sql` + `.down.sql`); never edit merged migrations; new tenant tables get `seller_id` + RLS policy.
@@ -25,7 +26,7 @@ Implement one task card at a time from `docs/tasks/T-xxx.md`, end to end: Go bac
 
 ## Hard rules
 
-- Do not change the claim, expiry or promotion SQL semantics without a task card that says so.
+- Do not change the claim, expiry or promotion SQL semantics, or add a stock path, without a task card that says so.
 - Do not add dependencies without listing them in the PR description with the reason.
 - Do not route money through a DropKilat account, add buyer fees, or weaken webhook verification.
 - Do not commit secrets or `.env`. Use `.env.example` for new variables and document them in `docs/backend.md` §8.
