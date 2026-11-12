@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Nuryanfa/DropKilat/internal/platform/config"
+	"github.com/Nuryanfa/DropKilat/internal/platform/httpx"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func main() {
@@ -28,14 +30,15 @@ func main() {
 		logger.Error("HTTP listener failed")
 		os.Exit(1)
 	}
-	if err := serve(ctx, listener, healthHandler()); err != nil {
+	if err := serve(ctx, listener, healthHandlerWithOptions(httpx.Options{Logger: logger, Production: cfg.Env == "prod", Registerer: prometheus.DefaultRegisterer})); err != nil {
 		logger.Error("HTTP server failed")
 		os.Exit(1)
 	}
 }
 
-func healthHandler() http.Handler {
-	mux := http.NewServeMux()
+func healthHandler() http.Handler { return healthHandlerWithOptions(httpx.Options{}) }
+func healthHandlerWithOptions(options httpx.Options) http.Handler {
+	mux := httpx.NewRouter(options)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
