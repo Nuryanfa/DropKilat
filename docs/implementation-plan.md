@@ -36,7 +36,7 @@ Xendit (P8) is last on purpose: Manual mode lets pilots run without waiting for 
 | T-004 | Seller screens in the prototype (S3 drops list, S4 drop editor, S5 live monitor, S6 proof queue) sharing state with the buyer view; view switch Seller/Pembeli | FS | One showcase path with no reload: create drop → buyer claims → live counters move → confirm/reject proof; stock invariant holds after every step |
 | T-003 | Interview kit: link prototype in the interview script, tally sheet | PO | 20 interviews logged |
 
-**Gate A (PO):** ≥ 5 of 20 sellers agree to try it on a real drop. If not, stop and revisit the PRD. Status: open (interviews running).
+**Gate A (PO):** ≥ 5 of 20 sellers agree to try it on a real drop. If not, stop and revisit the PRD. Status: open (interviews not started as of 2026-11-12).
 
 ## P1 — Foundation (≈ 4 days, may start before Gate A)
 
