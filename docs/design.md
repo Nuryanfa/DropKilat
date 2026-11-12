@@ -100,7 +100,7 @@ Radius 12 px for cards, 999 px for pills. Spacing scale 4 / 8 / 12 / 16 / 24 / 3
 
 ## 8. Prototype
 
-`prototype/` holds a clickable HTML prototype (no backend) for seller interviews: B1 → B2 → B3 with a "Simulasikan pembeli pertama tidak bayar" button that moves stock to waitlist user #1 and shows a mock WA message. Built in task T-001.
+`prototype/` holds a clickable HTML prototype (no backend) for seller interviews: B1 → B2 → B3 with a "Simulasikan pembeli pertama tidak bayar" button that moves stock to waitlist user #1 and shows a mock WA message. Built in task T-001. Task T-004 adds the seller side (S3, S4, S5, S6) on the same in-memory state, with a Seller/Pembeli view switch, so one seller can play both sides in an interview.
 
 ## 9. Copy added 2026-11-11 (ADR 0003 amendment, ADR 0006, T-406, T-407)
 
