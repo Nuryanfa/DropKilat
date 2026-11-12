@@ -121,6 +121,9 @@ Webhook handlers only persist the event and enqueue processing in the same reque
 | `step-up-required` | 401 | Unmasked personal data needs a fresh verification (ADR 0003) |
 | `otomatis-not-eligible` | 403 | Seller below 15 orders/month cannot enable Otomatis (ADR 0006, T-806) |
 | `invoice-overdue` | 403 | Drop create/publish while an invoice is > 14 days overdue and `DK_BILLING_ENFORCE_OVERDUE=true` (ADR 0006 amendment, T-901) |
+| `bad-request` | 400 | Request body could not be read (client disconnect, malformed encoding) |
+| `body-too-large` | 413 | Body over the route's limit (default 1 MiB; upload route 5 MB) |
+| `internal` | 500 | Unexpected error; detail hidden, stack trace only in the log with `request_id` |
 
 ## 5. Background workers
 

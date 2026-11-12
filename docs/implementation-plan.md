@@ -40,7 +40,7 @@ Xendit (P8) is last on purpose: Manual mode lets pilots run without waiting for 
 
 ## P1 — Foundation (≈ 4 days, may start before Gate A)
 
-Cards: `docs/tasks/T-101.md` … `T-105.md`.
+Cards: `docs/tasks/T-101.md` … `T-106.md`.
 
 | ID | Task | Owner | Acceptance criteria |
 | --- | --- | --- | --- |
@@ -49,6 +49,7 @@ Cards: `docs/tasks/T-101.md` … `T-105.md`.
 | T-103 | `platform/httpx`: router, request id, slog, recover, security headers, problem+json, rate limiter (token bucket, in-memory) | FS | Unit tests for problem mapping and rate limiter |
 | T-104 | CI: create `dropkilat_app` role, golangci-lint, `go test`, testcontainers, `govulncheck`, `make migrate-check`, prototype tests, pinned tool versions, build distroless image | FS | Green pipeline on an empty feature; image < 40 MB |
 | T-105 | Test strategy doc `docs/test-plan.md` and test helpers (`testdb` fixture, factories, fake clock) | QA | Plan covers every NFR in TRD §3 with a named test |
+| T-106 | httpx follow-ups from the T-103 review: `Register`/`RegisterType` split, rate limit before body read, server `ReadTimeout`/`IdleTimeout`, `bad-request` type, per-route `BodyLimit` | FS | Criteria in `docs/tasks/T-106.md`; lands before the first feature handler |
 
 ## P2 — Claim engine (≈ 5 days)
 
