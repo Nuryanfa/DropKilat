@@ -33,6 +33,7 @@ Xendit (P8) is last on purpose: Manual mode lets pilots run without waiting for 
 | --- | --- | --- | --- |
 | T-001 ✅ done | Clickable prototype in `prototype/` (static HTML/CSS/JS, no backend): screens B1→B2→B3→B6, live-looking countdown and stock, button "Simulasikan pembeli pertama tidak bayar" that moves stock to waitlist #1 and shows a mock WA bubble | FS | Opens from a phone via a static host; works offline after load; no console errors; Bahasa Indonesia copy from `docs/design.md` |
 | T-002 ✅ done | Prototype review: accessibility, copy, mobile viewport 360 px | QA | Report in `docs/tasks/T-001-qa.md` (combined with T-001); contrast ≥ 4.5:1; tap targets ≥ 44 px |
+| T-004 | Seller screens in the prototype (S3 drops list, S4 drop editor, S5 live monitor, S6 proof queue) sharing state with the buyer view; view switch Seller/Pembeli | FS | One showcase path with no reload: create drop → buyer claims → live counters move → confirm/reject proof; stock invariant holds after every step |
 | T-003 | Interview kit: link prototype in the interview script, tally sheet | PO | 20 interviews logged |
 
 **Gate A (PO):** ≥ 5 of 20 sellers agree to try it on a real drop. If not, stop and revisit the PRD. Status: open (interviews not started as of 2026-11-12).
