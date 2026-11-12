@@ -125,6 +125,8 @@ func TestGracefulShutdown_CompletesInFlightRequestOnSIGTERM(t *testing.T) {
 
 func TestMainProcessSIGTERMExitsZero(t *testing.T) {
 	if os.Getenv("DK_TEST_MAIN_CHILD") == "1" {
+		// The child enters the server CLI without the test runner arguments.
+		os.Args = os.Args[:1]
 		main()
 		return
 	}
