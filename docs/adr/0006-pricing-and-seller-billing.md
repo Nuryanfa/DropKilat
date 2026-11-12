@@ -48,17 +48,16 @@ Interpretations by the tech lead, to be confirmed by Nur in the named cards:
   - `seller` — seller cancelled for their own reason (out of stock, cannot ship). **Credited.**
   - `buyer_request` — seller cancelled because the buyer asked. **Not credited.** There is no buyer-side cancel after `paid` in the MVP; a buyer who wants out asks the seller, who picks this cause.
   - `system_error` — set only by the owner (Nur) from the owner screen, e.g. a double charge or a bug. **Credited.**
-  - `dispute` — `disputed → refund_pending`. **Credited** (default, see open point below).
+  - `dispute` — `disputed → refund_pending`. **Credited** (confirmed by Nur 2026-11-12).
   - `late_payment` — `expired → refund_pending`. Never confirmed, so never billed; no credit.
 - **Credit amount.** A credit only returns a fee that was billed. For a month M: credits for M = min(orders billed for M, credited refunds of orders confirmed in M). Each credit is Rp1.000 and tied to one order, so an order is never credited twice.
 - **Where credits go.** The invoicer applies unapplied credits, oldest first, to the next invoice it issues. A credit larger than that invoice's charges carries over to the following invoice. An invoice amount is never negative. A refund recorded before the invoice for its own month is issued is credited on that invoice.
-- **Due date.** Default: the 10th of the month the invoice is issued (WIB), i.e. 9 days after issue. Reminders at `due_at` and `due_at + 7 days`. Overdue block from `due_at + 14 days`.
+- **Due date.** The 10th of the month the invoice is issued (WIB), i.e. 9 days after issue. Reminders at `due_at` and `due_at + 7 days`. Overdue block from `due_at + 14 days`.
 - **Overdue block switch.** The block is behind `DK_BILLING_ENFORCE_OVERDUE` (default `false`), so Nur handles overdue cases manually until it is turned on. The owner screen lists overdue invoices either way. Marking an invoice paid or void lifts the block immediately.
 - **Issuer details.** `DK_INVOICE_ISSUER_NAME`, `DK_INVOICE_BANK_NAME`, `DK_INVOICE_BANK_ACCOUNT`, `DK_INVOICE_BANK_HOLDER`, required when `DK_FEATURE_BILLING=true`. Each invoice stores an encrypted snapshot of them at issue time, so a later change does not rewrite issued invoices. The bank account is never logged.
 
-### Open points for Nur (defaults apply until answered)
-- Refunds after a dispute (`dispute`): credited by default, because the buyer did not cancel. Confirm.
-- Due date on the 10th (9 days after issue). Confirm or name another term.
+### Open points for Nur
+- None. Both defaults were confirmed by Nur on 2026-11-12: refunds after a dispute are credited, and the due date is the 10th of the issue month.
 
 ### Consequences
 - New problem type `invoice-overdue` (403) on drop create and publish, only when the switch is on.
